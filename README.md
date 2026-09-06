@@ -12,8 +12,10 @@ crate dependencies, network services, database, browser or container requirement
 ```text
 cargo build --all-targets --locked
 cargo test --locked
+cargo test --release --locked
 cargo fmt --check
 cargo clippy --all-targets --locked -- -D warnings
+git diff --check
 ```
 
 The library is not a running web application. Authentication, SQLite, Axum,

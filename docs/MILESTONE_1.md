@@ -111,3 +111,47 @@ performance prescription for the later SQLite adapter. Dates support years 1–9
 hour amounts fit signed 64-bit integers. Out-of-range values are rejected.
 
 No unresolved blocking product ambiguity remains. Milestone 2 has not begun.
+
+## Fresh independent release review (2026-09-06)
+
+Reviewed the full domain implementation and existing tests against all four
+authoritative documents, the approved decisions, AGENTS.md and CODEX_RUNBOOK.md.
+No reproducible Milestone 1 correctness defect or blocking ambiguity was found.
+No production code or existing test was changed.
+
+Three additional adversarial tests in `tests/review.rs` cover:
+
+- Exhaustive replacement/deletion of either of two sources across seven activity
+  cases, two holidays, and combinations of spent Comp/Floater. An independent
+  state-table oracle determines validity and balances. Assertions also check
+  whole-ledger rollback, preserved prior audit, exact before/after projections,
+  shared support revision links, stale edit/delete rejection, and a second user
+  with colliding source IDs.
+- Signed-boundary adjustment edits for PTO, Comp and Floater, including a valid
+  `i64::MIN` debit whose annual net is zero, and overflow rejection with rollback.
+- Identical effective projections across all six insertion orders of three
+  holiday-work records, including shared support and a second holiday.
+
+The exhaustive test is bounded to the stated cases; it is not a proof over all
+possible inputs or histories. Existing tests additionally exercise future-dated
+net balances, year-changing edits, multi-day included-date filtering, holiday
+calendar correction locks, and shared-support deletion with spent credits.
+
+Validation after the additions: `cargo build --all-targets --locked`,
+`cargo test --locked` (52 passed), `cargo test --release --locked` (52 passed),
+`cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`, and
+`git diff --check` all passed. Doc tests passed with no examples. Host path
+canonicalization and Git line-ending notices remain environmental; no project
+compiler or Clippy warning occurred. README now includes release tests and diff
+checks in the validation commands.
+
+Human acceptance of Milestone 1 is recommended. The in-memory model still relies
+on trusted caller identity/time, and cloning the full ledger and audit snapshots
+does not scale as a production storage strategy. Durable atomicity, authenticated
+ownership, concurrency and request bounds require later-milestone proof. In
+particular, calendar configuration currently replaces a complete calendar without
+an expected-revision argument; the later administration/persistence boundary must
+address stale concurrent calendar submissions. This does not violate the current
+pure-domain milestone's sequential configuration contract. Source edits/deletions
+already enforce expected revisions. No Milestone 2 work or merge is authorized
+by this recommendation.
