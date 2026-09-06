@@ -14,6 +14,43 @@ pub struct Ledger {
 }
 
 impl Ledger {
+    /// Rehydrate current state without replaying history or manufacturing audit.
+    /// Supply complete records for each included owner/year, not a filtered view.
+    /// Deleted IDs remain reserved through `used_ids`. All effective invariants
+    /// are validated together, so loading order cannot impose a running balance.
+    pub fn restore(
+        calendars: impl IntoIterator<Item = Calendar>,
+        records: impl IntoIterator<Item = (UserId, Record)>,
+        used_ids: impl IntoIterator<Item = (UserId, EventId)>,
+    ) -> Result<Self, Error> {
+        let mut ledger = Self::default();
+        for calendar in calendars {
+            calendar.validate()?;
+            if ledger.calendars.insert(calendar.year, calendar).is_some() {
+                return Err(Error::InvalidCalendar);
+            }
+        }
+        ledger.used_ids.extend(used_ids);
+        let mut scopes = BTreeSet::new();
+        for (owner, mut record) in records {
+            record.source.validate()?;
+            record.source.dates.sort();
+            if record.reference.revision == 0 {
+                return Err(Error::StaleRevision);
+            }
+            scopes.insert((owner, record.source.dates[0].year()));
+            let key = (owner, record.reference.id);
+            ledger.used_ids.insert(key);
+            if ledger.records.insert(key, record).is_some() {
+                return Err(Error::AlreadyExists);
+            }
+        }
+        for (owner, year) in scopes {
+            ledger.snapshot(owner, year)?;
+        }
+        Ok(ledger)
+    }
+
     pub fn calendar(&self, year: Year) -> Option<&Calendar> {
         self.calendars.get(&year)
     }

@@ -4,10 +4,12 @@
 //! scopes personal operations by that ID; authenticating it is an adapter concern.
 //! Calendar mutation is a privileged application operation, not an admin bypass
 //! for personal records. The in-memory model is a reference transaction boundary;
-//! a future persistence adapter must provide equivalent isolation and atomicity.
+//! a persistence adapter must provide equivalent isolation and atomicity.
 
 mod ledger;
 mod model;
+#[cfg(feature = "serde")]
+mod serialization;
 
 pub use ledger::*;
 pub use model::*;

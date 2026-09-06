@@ -1,0 +1,20 @@
+[package]
+name = "daymark-persistence"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+daymark-domain = { path = "..", features = ["serde"] }
+rusqlite = { version = "0.38", features = ["bundled"] }
+serde = "1"
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "deny"
