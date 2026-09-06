@@ -5,8 +5,8 @@ edition = "2024"
 publish = false
 
 [workspace]
-members = ["persistence"]
-default-members = [".", "persistence"]
+members = ["persistence", "application"]
+default-members = [".", "persistence", "application"]
 resolver = "3"
 
 [features]
