@@ -1,24 +1,27 @@
 # Daymark / DMK
 
-Milestone 1: a pure Rust domain library and deterministic automated test harness.
+Milestones 1–2: a pure Rust domain library and SQLite persistence with durable audit.
 The product name is provisionally approved. See [the approved implementation
-plan](docs/IMPLEMENTATION_PLAN.md) and [milestone coverage](docs/MILESTONE_1.md).
+plan](docs/IMPLEMENTATION_PLAN.md), [domain coverage](docs/MILESTONE_1.md), and
+[persistence design and coverage](docs/MILESTONE_2.md).
 
 ## Local validation
 
-A Rust toolchain with rustfmt and Clippy is sufficient. There are no external
-crate dependencies, network services, database, browser or container requirements.
+A Rust toolchain with rustfmt, Clippy and a C compiler for bundled SQLite is
+required. Cargo fetches locked dependencies initially. Tests create temporary
+local databases; no external database service, browser or container is required.
 
 ```text
-cargo build --all-targets --locked
-cargo test --locked
-cargo test --release --locked
+cargo build --workspace --all-targets --locked
+cargo test --workspace --locked
+cargo test --workspace --release --locked
+cargo test -p daymark-domain --no-default-features --locked
 cargo fmt --check
-cargo clippy --all-targets --locked -- -D warnings
+cargo clippy --workspace --all-targets --locked -- -D warnings
 git diff --check
 ```
 
-The library is not a running web application. Authentication, SQLite, Axum,
+The libraries are not a running web application. Authentication, Axum,
 frontend, Docker and operational tooling belong to later milestones.
 
 ## Domain boundary
@@ -46,6 +49,8 @@ unconfigured years are explicitly identified. Deletion history never contributes
 to effective totals. Date corrections cannot move a holiday referenced by any
 active user's holiday records; prior configuration remains in global history.
 
-Do not treat this in-memory implementation as durable storage or an HTTP security
-boundary. Future SQLite work must preserve its semantics with real transactions,
-ownership constraints, revision checks and persistent audit history.
+`daymark-persistence::Store::open(path)` initializes or checks versioned SQLite
+migrations. Store operations preserve domain semantics with real transactions,
+ownership constraints, revision checks and persistent audit history. The caller
+supplies trusted owner IDs and times, and must authorize global calendar changes.
+See the Milestone 2 document for the API/storage contract and deferred boundaries.

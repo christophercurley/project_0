@@ -1,5 +1,6 @@
 use std::{collections::BTreeSet, fmt, str::FromStr};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
     InvalidDate,
@@ -71,7 +72,9 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", serde(try_from = "u16", into = "u16"))]
 pub struct Year(u16);
 
 impl Year {
@@ -88,7 +91,12 @@ impl Year {
 }
 
 /// Proleptic Gregorian date, without timezone or time-of-day.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    serde(try_from = "(u16, u8, u8)", into = "(u16, u8, u8)")
+)]
 pub struct Date {
     year: Year,
     month: u8,
@@ -130,7 +138,9 @@ impl fmt::Display for Date {
 }
 
 /// Nonnegative whole hours. Zero is useful for explicitly confirmed no Comp.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", serde(try_from = "i64", into = "i64"))]
 pub struct Hours(i64);
 
 impl Hours {
@@ -163,17 +173,22 @@ impl FromStr for Hours {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UserId(pub u64);
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EventId(pub u64);
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HolidayId(pub u64);
 
 /// UTC seconds since the Unix epoch, supplied by the trusted application clock.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AuditTime(pub i64);
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Bucket {
     Pto,
@@ -185,6 +200,7 @@ impl Bucket {
     pub const ALL: [Self; 4] = [Self::Pto, Self::Comp, Self::Holiday, Self::Floater];
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Classification {
     Grant,
@@ -193,12 +209,14 @@ pub enum Classification {
     Conversion,
     Adjustment,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Multiplier {
     OneToOne,
     OneAndAHalf,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Work {
     pub hours_worked: Option<Hours>,
@@ -206,6 +224,7 @@ pub struct Work {
     pub credited_comp: Hours,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Activity {
     Grant { bucket: Bucket, hours: Hours },
@@ -216,6 +235,7 @@ pub enum Activity {
     HolidayWork { holiday: HolidayId, work: Work },
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Source {
     /// One explicit total for all included dates. No daily allocation is inferred.
@@ -268,6 +288,7 @@ impl Source {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Holiday {
     pub id: HolidayId,
@@ -275,6 +296,7 @@ pub struct Holiday {
     pub name: String,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Calendar {
     pub year: Year,
@@ -309,18 +331,21 @@ impl Calendar {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SourceRef {
     pub id: EventId,
     pub revision: u64,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Record {
     pub reference: SourceRef,
     pub source: Source,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Origin {
     Entitlement {
@@ -334,6 +359,7 @@ pub enum Origin {
     },
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Effect {
     pub dates: Vec<Date>,
@@ -343,6 +369,7 @@ pub struct Effect {
     pub origin: Origin,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Snapshot {
     pub year: Year,
@@ -359,6 +386,7 @@ impl Snapshot {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Change {
     pub actor: UserId,
@@ -371,6 +399,7 @@ pub struct Change {
     pub after_effects: Vec<Snapshot>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CalendarChange {
     pub actor: UserId,
@@ -379,6 +408,7 @@ pub struct CalendarChange {
     pub after: Calendar,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Filter {
     pub bucket: Option<Bucket>,
