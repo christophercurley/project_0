@@ -199,6 +199,12 @@ impl Store {
         let mut ledger = load(&tx, Scope::Owner(owner))?;
         apply(&mut ledger)?;
         let change = &ledger.history(owner)[0];
+        // Do not silently overwrite drift and append a reconstructed "before"
+        // that disagrees with durable effects. Validate both years of a move
+        // while still holding the write transaction, before any durable writes.
+        for snapshot in &change.before_effects {
+            verify_effects(&tx, owner, snapshot)?;
+        }
         let record = change
             .after
             .as_ref()
@@ -388,21 +394,64 @@ fn load(conn: &Connection, scope: Scope) -> Result<Ledger> {
 }
 
 fn verify_effects(conn: &Connection, owner: UserId, snapshot: &Snapshot) -> Result<()> {
-    let mut stmt =
-        conn.prepare("SELECT payload FROM effects WHERE owner=?1 AND year=?2 ORDER BY ordinal")?;
+    let mut stmt = conn.prepare(
+        "SELECT ordinal,payload FROM effects WHERE owner=?1 AND year=?2 ORDER BY ordinal",
+    )?;
     let stored = stmt
         .query_map(params![key(owner.0), snapshot.year.get()], |r| {
-            r.get::<_, String>(0)
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
         })?
-        .map(|r| decode(&r?))
-        .collect::<Result<Vec<Effect>>>()?;
+        .map(|r| {
+            let (ordinal, payload) = r?;
+            Ok((ordinal, decode::<Effect>(&payload)?))
+        })
+        .collect::<Result<Vec<_>>>()?;
     let expected: Vec<_> = snapshot
         .effects
         .iter()
         .filter(|e| !matches!(e.origin, Origin::Entitlement { .. }))
         .cloned()
-        .collect();
+        .enumerate()
+        .map(|(ordinal, effect)| Ok((i64::try_from(ordinal).map_err(|_| Error::Overflow)?, effect)))
+        .collect::<Result<_>>()?;
     if stored != expected {
+        return Err(StoreError::CorruptState);
+    }
+    // Foreign keys prove that each link's target exists, but cannot prove that
+    // links are complete or correspond to the source(s) generating this effect.
+    let mut expected_supports = Vec::new();
+    for (ordinal, effect) in &expected {
+        let supports = match &effect.origin {
+            Origin::Source(reference) => std::slice::from_ref(reference),
+            Origin::WorkedHoliday { supports, .. } => supports.as_slice(),
+            Origin::Entitlement { .. } => unreachable!("filtered above"),
+        };
+        expected_supports.extend(supports.iter().map(|reference| (*ordinal, *reference)));
+    }
+    expected_supports.sort();
+    let mut stmt = conn.prepare(
+        "SELECT ordinal,source_id,revision FROM effect_supports WHERE owner=?1 AND year=?2 ORDER BY ordinal,source_id",
+    )?;
+    let stored_supports = stmt
+        .query_map(params![key(owner.0), snapshot.year.get()], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, Vec<u8>>(1)?,
+                r.get::<_, Vec<u8>>(2)?,
+            ))
+        })?
+        .map(|r| {
+            let (ordinal, source_id, revision) = r?;
+            Ok((
+                ordinal,
+                SourceRef {
+                    id: EventId(id(source_id)?),
+                    revision: id(revision)?,
+                },
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if stored_supports != expected_supports {
         return Err(StoreError::CorruptState);
     }
     Ok(())

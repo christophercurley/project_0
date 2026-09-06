@@ -23,6 +23,10 @@ Global calendars are shared; no per-user entitlement copies or balance caches
 are stored. Generated personal effects are persisted and compared with domain
 projections on snapshot/query reads. Historic audit snapshots contain the accepted
 before/after balances for accountability, not as a cache of current balances.
+These checks include effect ordinals and exact relational support links. Source
+mutations also verify the existing effects/supports in every affected year before
+writing, so a mutation cannot silently repair drift and hide it behind a newly
+appended reconstructed audit snapshot.
 
 ## Initialization and migration contract
 
@@ -203,3 +207,87 @@ SQLite results, not a claim of Linux deployment validation.
 
 Work is confined to `milestone-2-persistence`, based on accepted master `462e164`.
 Milestone 3 has not begun; no merge to master or real deployment was performed.
+
+## Fresh independent release review (2026-09-06)
+
+Reviewed AGENTS.md, CODEX_RUNBOOK.md, all authoritative documents, the plan and
+both milestone reports before inspecting the full domain, adapter, migration and
+existing tests. Baseline was `a139730` on `milestone-2-persistence`. This review
+attempted to falsify correctness independently of the earlier review's conclusions.
+
+Two fault-injected corruption-handling defects were reproduced with failing tests:
+
+1. Snapshot reads rejected a changed persisted effect, but create/edit/delete
+   accepted the same state, overwrote the discrepancy, and appended an audit whose
+   before-effects described the reconstructed domain projection rather than the
+   persisted effects. Mutations now reject drift in all affected years before any
+   durable write. This includes both sides of year-moving edits.
+2. Missing or misdirected relational effect supports were never compared with
+   generated origins. SQLite foreign keys still passed when a support was deleted
+   or redirected to an existing unrelated source in the same owner/year/revision.
+   Verification now checks exact support membership/revisions and effect ordinals
+   against the domain projection on snapshot/query reads and affected-year writes.
+
+These are fail-closed integrity fixes, not a claim that ordinary Store operations
+were observed producing corruption. No business-rule disagreement was reproduced
+from valid state. No migration, payload format, domain code or existing test was
+changed; the applied migration remains byte-for-byte unchanged.
+
+`persistence/tests/release_review.rs` adds eight substantive tests and one child
+process entry point:
+
+- Effect drift rejects create/edit/delete and year moves without durable changes.
+- Missing shared supports and an FK-valid unrelated support fail reads and writes.
+- Six insertion orders with full-width user/source/holiday IDs match domain
+  projections and exact accepted changes after every reopen.
+- A valid `i64::MIN` adjustment survives source/effect/audit encoding and reopen;
+  deleting it would overflow the net and is rejected without writes.
+- Synthetic high-revision heads exercise the signed boundary, `u64::MAX`, edit
+  overflow, deletion and permanent ID reservation. These fixtures do not pretend
+  to reproduce billions of historical edits.
+- A deferred foreign-key failure at calendar commit rolls back calendar rows,
+  normalized holidays, sources/effects, audit and sequence state; retry succeeds.
+- A separate process times out against a held `BEGIN IMMEDIATE`, leaves no writes,
+  and retries on the same Store only after another writer spends the balance; the
+  retry rejects the spend from freshly loaded state.
+- A separate process exits without Rust destructors after uncommitted source,
+  effect, support and audit inserts. Other readers and subsequent reopen see none
+  of those writes, and the attempted source ID remains available.
+
+The process tests use pipe handshakes with bounded signal waits. Existing tests
+continue to cover concurrent initialization, stale source/calendar races,
+first-reference/calendar-correction races, shared spent-credit reversals,
+cross-owner constraints, migration failures/version drift and audit update/delete
+rejection. SQLite's [transaction semantics](https://www.sqlite.org/lang_transaction.html)
+and [deferred foreign-key behavior](https://www.sqlite.org/foreignkeys.html)
+support the locking/commit model; the tests exercise the bundled implementation.
+
+Remaining limits: migration identity checks the recorded version/SQL, not a full
+fingerprint of live schema objects. The adapter is not a general database forensic
+validator, and direct database owners can bypass/drop audit safeguards or rewrite
+otherwise consistent state. No application SQL uses audit replacement/upsert;
+future code must preserve append-only INSERTs (SQLite REPLACE has special trigger
+semantics). Corruption errors require investigation, not automatic repair/retry.
+Full disk/IO faults, actual power loss, Linux filesystem behavior and recoverable
+backups remain operational validation work. The process-exit test proves recovery
+of uncommitted writes, not power-loss durability of acknowledged commits. Existing
+M3 identity/request/worker bounds and M6 storage/backup boundaries remain deferred.
+
+Final fresh-review validation:
+
+- `cargo build --workspace --all-targets --locked`: passed.
+- `cargo test --workspace --locked --quiet`: 85 test entries passed (including
+  the subprocess entry point); both crates' doc tests passed.
+- `cargo test --workspace --release --locked --quiet`: the same 85 entries passed.
+- `cargo test -p daymark-domain --no-default-features --locked --quiet`: 54 passed.
+- `cargo tree -p daymark-domain --no-default-features --locked`: no dependencies.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed.
+- Working and staged `git diff --check`: passed. Existing tests, migration,
+  accepted domain files and Cargo manifests/lockfile are unchanged by this review.
+
+Only environmental home-path canonicalization and Git line-ending notices were
+emitted. No project compiler or Clippy warning occurred. Milestone 2 is recommended
+for human acceptance with the two integrity fixes and documented limits above.
+Review changes are committed on `milestone-2-persistence`; no merge to master,
+Milestone 3 functionality or real deployment is part of this review.
