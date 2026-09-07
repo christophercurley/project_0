@@ -140,6 +140,10 @@ fn single<'a>(headers: &'a HeaderMap, key: &str) -> Result<Option<&'a str>> {
     Ok(value)
 }
 fn session(app: &App, headers: &HeaderMap) -> Result<Session> {
+    optional_session(app, headers)?.ok_or_else(ApiError::unauthorized)
+}
+fn optional_session(app: &App, headers: &HeaderMap) -> Result<Option<Session>> {
+    let csrf = single(headers, "x-csrf-token")?.map(str::to_owned);
     let mut token = None;
     for header in headers.get_all("cookie") {
         for cookie in header
@@ -157,10 +161,7 @@ fn session(app: &App, headers: &HeaderMap) -> Result<Session> {
             }
         }
     }
-    Ok(Session {
-        token: token.ok_or_else(ApiError::unauthorized)?,
-        csrf: single(headers, "x-csrf-token")?.map(str::to_owned),
-    })
+    Ok(token.map(|token| Session { token, csrf }))
 }
 fn parse<T: DeserializeOwned>(body: Input<T>) -> Result<T> {
     body.map(|Json(value)| value).map_err(|_| ApiError::bad())
@@ -202,6 +203,9 @@ async fn login(
     headers: HeaderMap,
     body: Input<Credentials>,
 ) -> Result<Response> {
+    // Missing or expired sessions may log in, but ambiguous credentials must
+    // never be silently discarded and bypass presented-session revocation.
+    let old = optional_session(&app, &headers)?;
     let input = parse(body)?;
     let password = Zeroizing::new(input.password);
     let username = security::username(&input.username).map_err(|_| ApiError::unauthorized())?;
@@ -226,7 +230,6 @@ async fn login(
             }
         })
         .await?;
-    let old = session(&app, &headers).ok();
     let (token, value) = app
         .database(move |db, now| db.login(&username, &verified, old, now))
         .await?;

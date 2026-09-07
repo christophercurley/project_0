@@ -188,6 +188,121 @@ mod tests {
     use tower::ServiceExt;
 
     #[tokio::test]
+    async fn cancelled_database_work_retains_admission_lock_and_logout_ordering() {
+        use daymark_domain::{Activity, AuditTime, Bucket, Date, EventId, Source, UserId, Year};
+        use std::{future::Future, task::Poll, time::Duration};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cancel.sqlite");
+        let app = App::open(&path, Config::https("https://daymark.test").unwrap())
+            .await
+            .unwrap();
+        let hash = app
+            .hashing(|| security::hash("synthetic password 42"))
+            .await
+            .unwrap();
+        let (token, view) = app
+            .database(move |db, now| {
+                db.account("alice", &hash, false, now)?;
+                db.login("alice", &hash, None, now)
+            })
+            .await
+            .unwrap();
+        let owner = UserId(view["id"].as_str().unwrap().parse().unwrap());
+        let session = db::Session {
+            token,
+            csrf: Some(view["csrf"].as_str().unwrap().into()),
+        };
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        let worker = app.clone();
+        let credential = session.clone();
+        let task = tokio::spawn(async move {
+            worker
+                .protected(credential, true, move |db, p, now| {
+                    assert_eq!(p.owner, owner);
+                    started.send(()).unwrap();
+                    wait.recv_timeout(Duration::from_secs(20)).unwrap();
+                    db.store
+                        .create(
+                            p.owner,
+                            AuditTime(now),
+                            EventId(1),
+                            Source {
+                                dates: vec![Date::new(2026, 1, 1).unwrap()],
+                                activity: Activity::Adjustment {
+                                    bucket: Bucket::Pto,
+                                    delta: 8,
+                                },
+                                notes: "Cancelled caller, committed worker".into(),
+                            },
+                        )
+                        .map_err(Into::into)
+                })
+                .await
+        });
+        ready.await.unwrap();
+        let mut readers = Vec::new();
+        for _ in 0..30 {
+            let mut pending = Box::pin(app.protected(
+                session.clone(),
+                false,
+                |_, _, _| -> Result<()> { panic!("cancelled queued reader ran") },
+            ));
+            std::future::poll_fn(|cx| {
+                assert!(pending.as_mut().poll(cx).is_pending());
+                Poll::Ready(())
+            })
+            .await;
+            readers.push(pending);
+        }
+        let revoked = session.clone();
+        let mut logout =
+            Box::pin(app.protected(session.clone(), true, move |db, _, _| db.logout(&revoked)));
+        std::future::poll_fn(|cx| {
+            assert!(logout.as_mut().poll(cx).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+        assert_eq!(app.database(|_, _| Ok(())).await.unwrap_err().0, 503);
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert_eq!(app.0.database_queue.available_permits(), 0);
+        drop(readers);
+        assert_eq!(app.0.database_queue.available_permits(), 30);
+        assert_eq!(app.0.database_slot.available_permits(), 0);
+        assert!(
+            App::open(&path, Config::https("https://daymark.test").unwrap())
+                .await
+                .is_err()
+        );
+        release.send(()).unwrap();
+        logout.await.unwrap();
+        assert_eq!(
+            app.protected(session, true, |_, _, _| -> Result<()> {
+                panic!("revoked authority reached persistence")
+            })
+            .await
+            .unwrap_err()
+            .0,
+            401
+        );
+        let (snapshot, history) = app
+            .database(move |db, _| {
+                Ok((
+                    db.store.snapshot(owner, Year::new(2026).unwrap())?,
+                    db.store.history(owner, EventId(1))?,
+                ))
+            })
+            .await
+            .unwrap();
+        assert_eq!(snapshot.balance(Bucket::Pto).get(), 8);
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].actor, owner);
+        assert_eq!(app.0.database_queue.available_permits(), 32);
+        assert_eq!(app.0.database_slot.available_permits(), 1);
+    }
+
+    #[tokio::test]
     async fn hashing_is_bounded_even_when_requesting_futures_are_cancelled() {
         let dir = tempfile::tempdir().unwrap();
         let app = App::open(

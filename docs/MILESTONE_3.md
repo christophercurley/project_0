@@ -335,3 +335,108 @@ This milestone proves neither Linux filesystem lock behavior nor backup/power-lo
 recovery. The single application process is a deliberate supported configuration;
 horizontal replicas require a redesigned shared authorization/transaction boundary.
 No real deployment or merge to master is part of this work.
+
+## Fresh independent release review (2026-09-06)
+
+Baseline: `0f3aeed` on `milestone-3-api-auth`. This review read AGENTS.md,
+CODEX_RUNBOOK.md, every document under docs, and the complete domain, persistence,
+application, migrations and test implementations. It did not rely on the previous
+review's conclusions. Work remains confined to Milestone 3.
+
+One defect was reproduced through a real loopback Axum/hyper TCP listener. Login
+used `session(...).ok()`, treating malformed or ambiguous session headers as if no
+session had been presented. A request with duplicate session cookies returned 200
+and issued a new cookie; the error path skipped revocation of the presented old
+session. Duplicate CSRF headers took the same path. Correct username/password and
+the normal Origin/custom-header checks were still required: this was a
+fail-closed parsing and session-rotation defect, not a password or owner bypass.
+
+Login now distinguishes an absent session from a parsing error before database
+admission/password work. Ambiguous cookie/CSRF headers are rejected without
+issuing or revoking sessions. Missing cookies and syntactically valid expired or
+unknown cookies still permit normal password authentication. Protected routes use
+the same parser and still require a session. No migration, dependency, domain or
+persistence production code changed.
+
+Eight tests were added; no existing test or assertion was modified or removed:
+
+- A TCP login regression covers repeated identical/different session cookies,
+  malformed duplicate cookies, identical/conflicting CSRF headers, unchanged
+  existing sessions, and login with an expired cookie. It failed with HTTP 200
+  before the fix and passed after it.
+- Raw TCP mutations exercise missing/duplicate/foreign/null/misleading Origin,
+  non-ASCII and Fetch Metadata headers, content types, swapped CSRF credentials,
+  cookie ambiguity, conflicting/invalid Content-Length, duplicate chunked
+  encoding, unsupported methods and a chunked body exceeding 32 KiB. Rejections
+  leave sources and source audit empty.
+- Chunked TCP creates with substituted Cookie/CSRF trailers retain the initial
+  authenticated owner. Concurrent TCP spends have exactly one winner in each of
+  PTO, Comp and Floater, with exact durable source/audit counts and no second-owner
+  data or balance change.
+- Sixty-four incomplete TCP bodies use Expect/Continue handshakes to prove actual
+  request admission. Request 65 receives 503; completing bodies releases capacity.
+  An unfinished body receives 408 after the read deadline and capacity recovers.
+- HTTP year moves preserve owned audit, reject stale years/revisions, and reject
+  injected effect corruption on reads and writes with generic 503 responses.
+  Rejected writes preserve audit and the other owner's data.
+- Concurrent normalized-username registration produces one account, Unicode/NUL/
+  whitespace lookalikes fail validation, 128-byte UTF-8 passwords round-trip
+  without truncation, overlong passwords fail, and raw duplicate JSON keys fail.
+- Separate executable processes reject live locks for normal, dot-component and
+  canonical database paths on this Windows host.
+- A deterministic worker test holds an authenticated mutation inside blocking
+  execution, fills all 32 database admissions, aborts its caller, cancels queued
+  readers, and queues logout. The running job retains its permits/lock, commits
+  once under the original owner, then logout revokes subsequent authority. This
+  uses test-only synchronization rather than claiming a chosen TCP-disconnect
+  schedule. The prior cancellation-safe password-worker tests remain in force.
+
+The new HTTP tests are in `application/tests/release_review.rs`; the deterministic
+worker test is in the existing test-only module in `application/src/lib.rs`.
+Previously accepted security tests still cover reset/login ordering, expiry and
+revocation after queue admission, ordinary/admin route boundaries, cross-user
+read/edit/delete/search/history, session fixation/caps, durable throttles/restart,
+SQLite busy failures, and registration/reset/session transaction rollback.
+
+No cross-user data access, administrator private-data route, ordinary-user admin
+bypass, stale-authority execution or negative-balance acceptance was reproduced.
+An administrator able to reset a password remains a trusted account-support actor;
+route isolation does not prevent that actor from subsequently logging in with the
+password they set. This follows the required manual-reset model.
+
+Transport observations and deferred risks: hyper can reject malformed framing
+before application middleware, so its parser-generated errors do not carry the
+middleware's JSON envelope/security headers; those responses contain no account
+or ledger data. Application admission starts after request headers are parsed.
+Pre-header connection limits/timeouts and slow response readers still need the
+planned ingress/capacity review. Bounded worker concurrency does not bound total
+ledger/audit size, aggregate projection cost, response size or disk growth. Shared
+proxy/global throttles can deny service to legitimate users; forwarding headers
+remain untrusted. Hard-link aliases and replacement of a live lock file remain
+outside the trusted filesystem-operator contract. Linux symlink/lock behavior,
+full disk/IO/power-loss tests, TLS/proxy integration, backups, Docker and browser
+acceptance remain deferred to their documented milestones. None was implemented
+or deployed by this review.
+
+Final fresh-review validation on Windows, Rust/Cargo 1.97.1 and bundled SQLite:
+
+- `cargo build --workspace --all-targets --locked`: passed.
+- `cargo build --workspace --release --all-targets --locked`: passed.
+- `cargo test --workspace --locked --quiet`: 118 test entries passed.
+- `cargo test --workspace --release --locked --quiet`: the same 118 passed.
+  These include all 33 API/security/worker entries and the 85 accepted
+  domain/persistence entries, including the persistence subprocess entry point.
+- `cargo test -p daymark-domain --no-default-features --locked --quiet`:
+  54 passed; `cargo tree` with the same package/features confirms no dependencies.
+- All workspace doc tests passed (no examples).
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed.
+- Working and staged `git diff --check`: passed before commit.
+
+The deliberately failing pre-fix TCP regression is disclosed above; complete
+debug/release suites passed after remediation. Only environmental home-path
+canonicalization and Git line-ending notices occurred. Unix-only tests were not
+executed on this host. No accepted tests, applied migrations, dependencies or
+M1/M2 implementation changed. Milestone 3 is recommended for human acceptance
+with the parsing/rotation fix and the stated operational limits. Review changes
+are committed on `milestone-3-api-auth`; master is unchanged, and work stops here.
