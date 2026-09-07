@@ -23,8 +23,9 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 git diff --check
 ```
 
-`daymark-api` runs the JSON API and provides an interactive administrator
-bootstrap command. See the Milestone 3 document for local invocation, cookie/CSRF
+`daymark-api` runs the JSON API and provides interactive administrator bootstrap
+and local emergency sole-admin password recovery commands. See the Milestone 3
+document for the recovery workflow, local invocation, cookie/CSRF
 requirements, limits and the one-application-process storage contract.
 Frontend, Docker and operational tooling belong to later milestones.
 

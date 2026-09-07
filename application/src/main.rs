@@ -23,6 +23,12 @@ fn main() {
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.as_slice() {
+        [command, path] if command == "reset-admin-password" => {
+            let path = path.clone();
+            tokio::task::spawn_blocking(move || daymark_api::operator::reset_admin_password(path))
+                .await??;
+            tracing::info!(event = "administrator_password_recovered");
+        }
         [command, path, username] if command == "bootstrap" => {
             if !std::io::stdin().is_terminal() {
                 return Err("interactive terminal required".into());
@@ -68,7 +74,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => {
             eprintln!(
-                "Usage: daymark-api bootstrap DATABASE USERNAME\n       daymark-api serve DATABASE ORIGIN BIND [--local]"
+                "Usage: daymark-api bootstrap DATABASE USERNAME\n       daymark-api reset-admin-password DATABASE\n       daymark-api serve DATABASE ORIGIN BIND [--local]"
             );
             return Err("invalid arguments".into());
         }

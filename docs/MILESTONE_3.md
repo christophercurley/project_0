@@ -83,8 +83,10 @@ Initial bootstrap is a local interactive operator command, run while the server
 is stopped. It prompts twice with terminal echo disabled, refuses nonterminal
 input, creates a new admin account, and fails if the username is taken or an
 administrator already exists. It never promotes an existing registrant. The
-initial admin password must be retained by the operator; loss of that credential
-does not enable an unauthenticated recovery feature.
+initial admin password should be retained by the operator. If it is lost, the
+M3.1 local emergency recovery command below restores the existing account using
+filesystem/operator authority and exclusive database access. There is no remote
+administrator recovery feature.
 
 ```text
 cargo run -p daymark-api --locked -- bootstrap PATH_TO_LOCAL_DATABASE USERNAME
@@ -440,3 +442,74 @@ executed on this host. No accepted tests, applied migrations, dependencies or
 M1/M2 implementation changed. Milestone 3 is recommended for human acceptance
 with the parsing/rotation fix and the stated operational limits. Review changes
 are committed on `milestone-3-api-auth`; master is unchanged, and work stops here.
+
+## Milestone 3.1: local sole-administrator recovery
+
+The product-owner clarification requires emergency recovery of the sole existing
+administrator. Stop Daymark, then run from a real local terminal:
+
+```text
+daymark-api reset-admin-password PATH_TO_LOCAL_DATABASE
+```
+
+Enter the new password twice at the hidden prompts. Both stdin and stdout must
+be terminals; redirected invocation is refused. There is no username, account ID,
+password argument, environment-secret input or HTTP recovery route. The existing
+database must exist. Passwords use the same 12–128 UTF-8 byte policy (without
+truncation) and shared Argon2id implementation as normal account passwords.
+This is filesystem-authorized emergency recovery, not normal account support.
+
+After input validation, recovery acquires the same canonical exclusive application
+lock used by bootstrap. It refuses to proceed while an application or operator
+owns that lock, including from another process. The lock spans hashing and commit.
+An immediate SQLite transaction locates exactly one existing administrator itself;
+zero or multiple administrators cause refusal. It changes only that credential,
+deletes all that administrator's sessions, and appends the recovery event in one
+commit. No account is created, selected by caller identity or promoted. Ordinary
+accounts, passwords, complete session rows, settings, ledgers and histories remain
+unchanged. Old admin sessions remain invalid after subsequent login and reopen.
+
+Additive identity migration 002 creates append-only `admin_recovery_history` with
+sequence, target account identity, actor `local_operator` and UTC timestamp. This
+does not falsely attribute the action to an authenticated administrator. Audit
+records, errors and success logging contain no password, hash, session or CSRF
+secret. Applied migration 001 and accepted domain/persistence code are unchanged.
+Schema upgrade is independently committed when opening the database; a later
+failed recovery leaves prior credential, session and audit records unchanged.
+Failures at password update, session deletion, audit append or deferred commit
+roll back the entire recovery transaction.
+
+The focused independent reviewer added adversarial tests for first-write failure
+with existing audit, exact UTF-8 byte limits and repeated recovery, and HTTP
+self-reset/guessed recovery routes. No actionable security defect was reproduced.
+Implementation tests also cover mismatches, missing prompt input, invalid input,
+zero/multiple administrators, canonical locks, cross-process conflicts, all old
+admin sessions, ordinary-user preservation, durable reopen and migration drift.
+An executable CLI test proves noninteractive and account/password-selector
+invocations fail closed. No accepted tests were weakened or removed.
+
+Terminal echo suppression uses the existing `rpassword` implementation. Successful
+automated recovery uses a private test-only prompt seam; real interactive console
+success/echo restoration was source-inspected by the reviewer, not exercised end
+to end. Linux execution and the existing trusted-filesystem exclusions (hard-link
+aliases or replacing a live lock file) remain deferred. No remote administrator
+recovery is supported. No frontend, deployment or backup tooling was added.
+
+Final M3.1 validation on Windows with the existing locked toolchain/dependencies:
+
+- Workspace all-target debug and release builds: passed.
+- Complete workspace debug and release tests: 130 entries passed in each profile
+  (45 API/security/worker entries and all 85 accepted domain/persistence entries).
+- Dependency-free domain tests: 54 passed; dependency tree contains only the
+  domain crate itself.
+- `cargo test -p daymark-api admin_recovery --locked --quiet`: 12 passed,
+  including the test subprocess entry point and real executable rejection test.
+- Workspace doc tests, formatting, Clippy with warnings denied and working/staged
+  diff checks: passed.
+
+Only existing environmental home-path canonicalization and Git line-ending
+notices occurred. The reviewer also inspected the final cross-process tests and
+full-row ordinary-session comparison and closed the review without findings.
+Milestone 3 including M3.1 is recommended for human acceptance with the stated
+operational test limits. Work remains on `milestone-3-api-auth`; master is
+unchanged. No Milestone 4 work was started.

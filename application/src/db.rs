@@ -13,6 +13,7 @@ use std::{
 };
 
 const MIGRATION: &str = include_str!("../migrations/001_identity.sql");
+const RECOVERY_MIGRATION: &str = include_str!("../migrations/002_admin_recovery.sql");
 pub const SESSION_SECONDS: i64 = 43_200;
 pub const IDLE_SECONDS: i64 = 1_800;
 
@@ -87,6 +88,7 @@ impl Db {
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<rusqlite::Result<_>>()?;
         let migration = MIGRATION.replace("\r\n", "\n");
+        let recovery_migration = RECOVERY_MIGRATION.replace("\r\n", "\n");
         match applied.as_slice() {
             [] => {
                 // M2 was a library test milestone. Never assign unclaimed source
@@ -99,7 +101,17 @@ impl Db {
                 tx.execute("INSERT INTO identity_migrations VALUES (1,?1)", [migration])?;
             }
             [(1, sql)] if sql.replace("\r\n", "\n") == migration => {}
+            [(1, sql), (2, recovery)]
+                if sql.replace("\r\n", "\n") == migration
+                    && recovery.replace("\r\n", "\n") == recovery_migration => {}
             _ => return Err(ApiError::busy()),
+        }
+        if applied.len() < 2 {
+            tx.execute_batch(RECOVERY_MIGRATION)?;
+            tx.execute(
+                "INSERT INTO identity_migrations VALUES (2,?1)",
+                [recovery_migration],
+            )?;
         }
         tx.commit()?;
         Ok(Self {

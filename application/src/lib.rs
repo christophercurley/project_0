@@ -2,8 +2,12 @@
 mod db;
 mod error;
 mod http;
+pub mod operator;
 mod security;
 mod wire;
+
+#[cfg(test)]
+extern crate self as daymark_api;
 
 pub use error::ApiError;
 use error::Result;
