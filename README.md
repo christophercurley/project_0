@@ -1,9 +1,11 @@
 # Daymark / DMK
 
-Milestones 1–2: a pure Rust domain library and SQLite persistence with durable audit.
+Milestones 1–3: pure Rust domain rules, SQLite persistence with durable audit,
+and an Axum API with accounts, sessions and narrow administration.
 The product name is provisionally approved. See [the approved implementation
 plan](docs/IMPLEMENTATION_PLAN.md), [domain coverage](docs/MILESTONE_1.md), and
-[persistence design and coverage](docs/MILESTONE_2.md).
+[persistence design and coverage](docs/MILESTONE_2.md), and
+[API/security design and local invocation](docs/MILESTONE_3.md).
 
 ## Local validation
 
@@ -16,13 +18,16 @@ cargo build --workspace --all-targets --locked
 cargo test --workspace --locked
 cargo test --workspace --release --locked
 cargo test -p daymark-domain --no-default-features --locked
-cargo fmt --check
+cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 git diff --check
 ```
 
-The libraries are not a running web application. Authentication, Axum,
-frontend, Docker and operational tooling belong to later milestones.
+`daymark-api` runs the JSON API and provides interactive administrator bootstrap
+and local emergency sole-admin password recovery commands. See the Milestone 3
+document for the recovery workflow, local invocation, cookie/CSRF
+requirements, limits and the one-application-process storage contract.
+Frontend, Docker and operational tooling belong to later milestones.
 
 ## Domain boundary
 

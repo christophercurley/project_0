@@ -27,12 +27,18 @@ Most users are ordinary users who:
 - view their own calendar and dashboard;
 - never see another user's private time-off data.
 
-One administrator role exists for:
+Exactly one administrator account, with one administrator role, exists for:
 - maintaining the global annual holiday calendar;
 - basic account administration;
 - manually resetting a user's password when necessary.
 
 There is no email subsystem.
+
+If the sole administrator password is lost, recovery requires a local operator
+with filesystem authority and exclusive database access. The emergency command
+interactively sets a new password for that same administrator and revokes all
+admin sessions. It is not normal account administration or a remote feature;
+there is no browser, email, token or unauthenticated web recovery mechanism.
 
 ## Core time-off buckets
 

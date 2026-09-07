@@ -245,6 +245,20 @@ Admin can inspect and correct imported holidays.
 ### ADMIN-004 — Account support
 Admin can perform minimal account administration needed for manual password reset.
 
+### ADMIN-005 — Local emergency administrator recovery
+A local filesystem-authorized operator can recover the existing sole admin
+password through an interactive, echo-disabled, double-confirmation command
+holding exclusive database access. It selects the admin itself and rejects zero
+or multiple admins, account selectors, noninteractive input, mismatch and invalid
+passwords. It cannot promote or create an account and has no HTTP recovery path.
+
+### AUTH-010 — Administrator recovery atomicity and isolation
+Successful local recovery atomically replaces the admin password, revokes all
+admin sessions and appends a secret-free operator audit event. The old password
+and old sessions lose authority across restart; the new password authenticates.
+Any recovery transaction failure preserves credentials, sessions and audit.
+Ordinary-user credentials, sessions, settings, records and history remain intact.
+
 ## N. SQLite, backup, container
 
 ### DB-001 — Persistent SQLite

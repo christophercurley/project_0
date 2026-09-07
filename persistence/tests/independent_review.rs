@@ -2,6 +2,7 @@ use daymark_domain::*;
 use daymark_persistence::{Store, StoreError};
 use std::sync::{Arc, Barrier};
 use std::thread;
+use std::time::{Duration, Instant};
 
 const OWNER: UserId = UserId(0);
 const OTHER: UserId = UserId(u64::MAX);
@@ -192,16 +193,21 @@ fn simultaneous_initialization_is_atomic_and_retryable() {
             let barrier = barrier.clone();
             thread::spawn(move || {
                 barrier.wait();
-                match Store::open(&path) {
-                    Ok(_) => {}
-                    // WAL activation can legitimately report SQLITE_BUSY before the
-                    // migration transaction starts. The complete open is retryable.
-                    Err(StoreError::Storage(rusqlite::Error::SqliteFailure(error, _)))
-                        if error.code == rusqlite::ErrorCode::DatabaseBusy =>
-                    {
-                        Store::open(&path).unwrap();
+                let deadline = Instant::now() + Duration::from_secs(15);
+                loop {
+                    match Store::open(&path) {
+                        Ok(_) => break,
+                        // A single immediate retry was observed returning BUSY too:
+                        // other initializers may still contend during WAL activation.
+                        // Retry the complete open, bounded in time, never other errors.
+                        Err(StoreError::Storage(rusqlite::Error::SqliteFailure(error, _)))
+                            if error.code == rusqlite::ErrorCode::DatabaseBusy =>
+                        {
+                            assert!(Instant::now() < deadline, "initializer remained busy");
+                            thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(error) => panic!("unexpected initialization failure: {error:?}"),
                     }
-                    Err(error) => panic!("unexpected initialization failure: {error:?}"),
                 }
             })
         })

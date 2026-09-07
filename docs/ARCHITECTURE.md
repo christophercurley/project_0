@@ -112,7 +112,7 @@ Do not add CAPTCHA unless justified by actual need; reasonable rate limiting/thr
 
 ## Administrator
 
-The system has an administrator role.
+The system has exactly one administrator account and one administrator role.
 
 Admin capabilities in v1 are intentionally narrow:
 - annual global holiday-calendar management;
@@ -122,6 +122,17 @@ Admin capabilities in v1 are intentionally narrow:
 Admin does not need a generalized RBAC framework.
 
 The initial admin bootstrap method is an implementation decision and must be documented securely.
+
+Loss of the sole administrator password is recoverable only through a local
+operator command with filesystem authority and the same exclusive canonical
+database lock used by bootstrap. It requires interactive terminal input with
+echo disabled and matching confirmation, using the existing password policy
+and Argon2id implementation. The command selects exactly one existing admin
+itself; it accepts no account selector and cannot create or promote accounts.
+Password replacement, revocation of every admin session, and a secret-free
+operator recovery audit append must commit atomically or roll back together.
+Ordinary-user credentials, sessions and data remain unchanged. This emergency
+operator mechanism has no HTTP, browser, email, token or remote recovery path.
 
 ## Audit history
 

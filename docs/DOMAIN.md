@@ -45,6 +45,13 @@ Ordinary users may only view or mutate their own personal data.
 
 The administrator may manage global holiday configuration and perform limited account-administration functions such as password reset.
 
+Daymark has exactly one administrator account after local bootstrap. If its
+password is lost, a local filesystem-authorized operator may recover that same
+account using an interactive command with exclusive database access. Recovery
+atomically changes its password, revokes all its sessions and preserves a
+secret-free operator audit event. It must not target, create or promote another
+account, change ordinary-user data, or expose a remote recovery mechanism.
+
 ## PTO
 
 PTO entitlement rules based on years of service are intentionally not encoded in v1.

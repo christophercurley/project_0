@@ -34,6 +34,14 @@ Open unique-username/password registration, login/logout and manual administrato
 
 One administrator permission category: global holidays, basic account support and manual password reset. It grants no private ledger/audit access. Bootstrap via local operator command with interactive secret input, no defaults or first-registrant promotion. No account deletion feature in v1.
 
+M3.1 product-owner clarification: exactly one administrator account is supported.
+Loss of its password is recoverable through a local interactive operator command
+holding the same exclusive canonical database lock. It selects the existing sole
+admin, requires hidden double input under the same password/hash policy, and
+atomically replaces the password, revokes all admin sessions and appends a
+secret-free operator audit event. No account selector, promotion, new admin or
+remote recovery is permitted. Ordinary users and their data remain unchanged.
+
 ## Audit design
 
 Immutable source revisions plus current state, not full event sourcing. Capture actor/owner, UTC timestamp, before/after source values, deleted tombstones, and before/after generated effects with support revisions for shared conversions. Record successful configuration/account changes without credential contents. Write history atomically with effective state. Default Ledger excludes deleted/superseded records; authorized details reconstruct revisions. Failed domain mutations leave state and accepted-change history unchanged.
